@@ -1,0 +1,41 @@
+
+NIDS Random Forest — Training Report
+=====================================
+Dataset          : 5000 samples
+Train / Test     : 4000 / 1000
+Features         : 13
+
+Model Parameters
+----------------
+n_estimators     : 100
+max_depth        : 15
+max_features     : sqrt
+class_weight     : balanced
+
+Performance Metrics
+-------------------
+Accuracy         : 99.80%
+Precision        : 100.00%
+Recall           : 99.50%
+F1 Score         : 99.75%
+ROC-AUC          : 100.00%
+5-Fold CV F1     : 99.85% ± 0.09%
+
+Confusion Matrix
+----------------
+              Predicted
+              Normal  Susp
+Actual Normal    600      0
+       Susp        2    398
+
+Classification Report
+---------------------
+              precision    recall  f1-score   support
+
+      Normal       1.00      1.00      1.00       600
+  Suspicious       1.00      0.99      1.00       400
+
+    accuracy                           1.00      1000
+   macro avg       1.00      1.00      1.00      1000
+weighted avg       1.00      1.00      1.00      1000
+

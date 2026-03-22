@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NIDS SENTINEL — Live</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:#020b06; --panel:#041209; --border:#0d3320;
+    --green:#00ff6a; --green-dim:#00a344; --green-glow:#00ff6a55;
+    --red:#ff2d2d; --red-glow:#ff2d2d44;
+    --yellow:#ffe040; --cyan:#00e5ff;
+    --text:#b0ffcc; --text-dim:#3a7a50;
+    --font-mono:'Share Tech Mono',monospace;
+    --font-display:'Orbitron',monospace;
+    --font-body:'IBM Plex Mono',monospace;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:13px;overflow-x:hidden}
+  body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(to bottom,transparent 0px,transparent 2px,rgba(0,0,0,.18) 2px,rgba(0,0,0,.18) 4px);pointer-events:none;z-index:9999}
+  @keyframes flicker{0%,100%{opacity:1}93%{opacity:.97}97%{opacity:.98}}
+  body{animation:flicker 6s infinite}
+
+  header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:1px solid var(--border);background:linear-gradient(90deg,#020b06,#041a0e,#020b06);position:sticky;top:0;z-index:100}
+  .logo{font-family:var(--font-display);font-size:18px;font-weight:900;letter-spacing:4px;color:var(--green);text-shadow:0 0 12px var(--green-glow),0 0 30px var(--green-glow)}
+  .logo span{color:var(--cyan)}
+  .header-meta{display:flex;gap:28px;align-items:center}
+  .hm-item{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+  .hm-label{font-size:9px;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase}
+  .hm-value{font-family:var(--font-mono);font-size:13px;color:var(--green)}
+  #clock{font-family:var(--font-mono);font-size:20px;color:var(--green);text-shadow:0 0 8px var(--green-glow)}
+  .status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:6px;box-shadow:0 0 8px var(--green);animation:pulse-dot 1.5s ease-in-out infinite}
+  @keyframes pulse-dot{0%,100%{box-shadow:0 0 4px var(--green)}50%{box-shadow:0 0 16px var(--green),0 0 32px var(--green-glow)}}
+
+  /* connection badge */
+  #connBadge{padding:4px 12px;border-radius:3px;font-size:10px;letter-spacing:2px;border:1px solid;font-family:var(--font-mono)}
+  #connBadge.live{background:rgba(0,255,106,.1);color:var(--green);border-color:rgba(0,255,106,.3)}
+  #connBadge.waiting{background:rgba(255,224,64,.1);color:var(--yellow);border-color:rgba(255,224,64,.3)}
+  #connBadge.error{background:rgba(255,45,45,.1);color:var(--red);border-color:rgba(255,45,45,.3)}
+
+  .main{padding:16px 20px;display:grid;gap:14px}
+  .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .stat-card{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:16px 20px;position:relative;overflow:hidden;transition:border-color .3s}
+  .stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+  .stat-card.green::before{background:var(--green);box-shadow:0 0 12px var(--green)}
+  .stat-card.red::before{background:var(--red);box-shadow:0 0 12px var(--red)}
+  .stat-card.yellow::before{background:var(--yellow);box-shadow:0 0 12px var(--yellow)}
+  .stat-card.cyan::before{background:var(--cyan);box-shadow:0 0 12px var(--cyan)}
+  .stat-label{font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--text-dim);margin-bottom:10px}
+  .stat-value{font-family:var(--font-display);font-size:30px;font-weight:700;line-height:1}
+  .stat-card.green .stat-value{color:var(--green);text-shadow:0 0 20px var(--green-glow)}
+  .stat-card.red   .stat-value{color:var(--red);text-shadow:0 0 20px var(--red-glow)}
+  .stat-card.yellow .stat-value{color:var(--yellow)}
+  .stat-card.cyan  .stat-value{color:var(--cyan)}
+  .stat-sub{font-size:10px;color:var(--text-dim);margin-top:6px}
+  .stat-icon{position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:32px;opacity:.07}
+
+  .mid-row{display:grid;grid-template-columns:1fr 340px;gap:14px}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:4px;overflow:hidden}
+  .panel-header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(0,255,106,.03)}
+  .panel-title{font-family:var(--font-display);font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--green)}
+  .panel-badge{font-size:9px;padding:2px 8px;border-radius:2px;background:rgba(0,255,106,.1);color:var(--green);border:1px solid rgba(0,255,106,.2);letter-spacing:1px}
+  .panel-badge.red{background:rgba(255,45,45,.1);color:var(--red);border-color:rgba(255,45,45,.2)}
+  .panel-body{padding:14px}
+  canvas{display:block}
+  #lineChart{width:100%;height:200px}
+  #pieChart{width:100%;height:200px}
+
+  .bot-row{display:grid;grid-template-columns:1fr 1fr 340px;gap:14px}
+  .proto-bars{display:flex;flex-direction:column;gap:10px;padding:14px}
+  .proto-row{display:flex;align-items:center;gap:10px}
+  .proto-name{width:48px;font-size:11px;color:var(--text-dim)}
+  .proto-track{flex:1;height:10px;background:rgba(0,255,106,.06);border-radius:2px;overflow:hidden}
+  .proto-fill{height:100%;border-radius:2px;transition:width 1s ease}
+  .proto-fill.tcp{background:var(--cyan);box-shadow:0 0 6px var(--cyan)}
+  .proto-fill.udp{background:var(--yellow)}
+  .proto-fill.icmp{background:var(--red)}
+  .proto-fill.other{background:var(--green-dim)}
+  .proto-pct{width:36px;text-align:right;font-size:11px;color:var(--green)}
+
+  .ip-table{width:100%;border-collapse:collapse}
+  .ip-table th{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim);padding:4px 8px;text-align:left;border-bottom:1px solid var(--border)}
+  .ip-table td{padding:5px 8px;font-size:11px;border-bottom:1px solid rgba(13,51,32,.5)}
+  .ip-badge{display:inline-block;padding:1px 6px;border-radius:2px;font-size:10px}
+  .ip-badge.normal{background:rgba(0,255,106,.1);color:var(--green)}
+  .ip-badge.suspicious{background:rgba(255,45,45,.15);color:var(--red)}
+  .ip-badge.warning{background:rgba(255,224,64,.1);color:var(--yellow)}
+
+  .feed{height:260px;overflow-y:auto;padding:8px 12px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+  .feed::-webkit-scrollbar{width:4px}
+  .feed::-webkit-scrollbar-thumb{background:var(--border)}
+  .feed-entry{padding:6px 10px;margin-bottom:4px;border-left:3px solid;background:rgba(0,0,0,.3);border-radius:0 2px 2px 0;font-family:var(--font-mono);font-size:11px;line-height:1.5;animation:slideIn .3s ease}
+  @keyframes slideIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+  .feed-entry.normal{border-color:var(--green-dim);color:var(--text)}
+  .feed-entry.alert{border-color:var(--red);color:var(--red);background:rgba(255,45,45,.05)}
+  .feed-entry.warning{border-color:var(--yellow);color:var(--yellow)}
+  .feed-time{opacity:.5;margin-right:8px}
+
+  #alertBanner{display:none;margin:0 0 4px;padding:10px 20px;background:rgba(255,45,45,.08);border:1px solid var(--red);border-radius:4px;font-family:var(--font-display);font-size:12px;letter-spacing:2px;color:var(--red);text-align:center;animation:blinkBorder 1s ease infinite}
+  @keyframes blinkBorder{0%,100%{box-shadow:0 0 8px var(--red-glow)}50%{box-shadow:0 0 24px var(--red-glow),inset 0 0 12px rgba(255,45,45,.05)}}
+
+  .fv-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:14px}
+  .fv-item{display:flex;justify-content:space-between;align-items:center;padding:5px 10px;background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:2px}
+  .fv-key{font-size:10px;color:var(--text-dim)}
+  .fv-val{font-family:var(--font-mono);font-size:11px;color:var(--cyan)}
+
+  .gauge-wrap{padding:14px;display:flex;flex-direction:column;align-items:center;gap:10px}
+  .gauge-svg{width:160px;height:90px}
+  .gauge-label{font-family:var(--font-display);font-size:22px;font-weight:700;color:var(--green);text-shadow:0 0 16px var(--green-glow)}
+  .gauge-sub{font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--text-dim)}
+
+  .ms-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:14px}
+  .ms-item{padding:8px 12px;background:rgba(0,255,106,.03);border:1px solid var(--border);border-radius:3px}
+  .ms-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px}
+  .ms-val{font-family:var(--font-mono);font-size:13px;color:var(--green)}
+
+  footer{margin-top:8px;padding:10px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:9px;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase}
+  @media(max-width:1100px){.stat-row{grid-template-columns:repeat(2,1fr)}.mid-row,.bot-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">NIDS<span>::</span>SENTINEL <span style="font-size:11px;color:var(--yellow)">◈ LIVE</span></div>
+    <div style="font-size:9px;letter-spacing:2px;color:var(--text-dim);margin-top:3px;">REAL-TIME NETWORK INTRUSION DETECTION — RANDOM FOREST ML</div>
+  </div>
+  <div class="header-meta">
+    <div id="connBadge" class="waiting">⏳ CONNECTING...</div>
+    <div class="hm-item">
+      <span class="hm-label">Data Source</span>
+      <span class="hm-value" id="dataSource">—</span>
+    </div>
+    <div class="hm-item">
+      <span class="hm-label">Refresh</span>
+      <span class="hm-value">Every 5s</span>
+    </div>
+    <div class="hm-item">
+      <span class="hm-label">Local Time</span>
+      <div id="clock">--:--:--</div>
+    </div>
+  </div>
+</header>
+
+<div class="main">
+  <div id="alertBanner">⚠ INTRUSION ALERT — SUSPICIOUS TRAFFIC PATTERN DETECTED ⚠</div>
+
+  <div class="stat-row">
+    <div class="stat-card cyan">
+      <div class="stat-label">Total Packets</div>
+      <div class="stat-value" id="totalPkts">0</div>
+      <div class="stat-sub" id="pktsRate">Waiting for data...</div>
+      <div class="stat-icon">📡</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-label">Normal Traffic</div>
+      <div class="stat-value" id="normalPct">0%</div>
+      <div class="stat-sub" id="normalCount">0 windows</div>
+      <div class="stat-icon">✅</div>
+    </div>
+    <div class="stat-card red">
+      <div class="stat-label">Suspicious Traffic</div>
+      <div class="stat-value" id="suspPct">0%</div>
+      <div class="stat-sub" id="suspCount">0 windows</div>
+      <div class="stat-icon">🚨</div>
+    </div>
+    <div class="stat-card yellow">
+      <div class="stat-label">Alerts Triggered</div>
+      <div class="stat-value" id="alertCount">0</div>
+      <div class="stat-sub" id="lastAlertTime">No alerts yet</div>
+      <div class="stat-icon">⚡</div>
+    </div>
+  </div>
+
+  <div class="mid-row">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Packet Flow — Real-Time (5s window)</span>
+        <span class="panel-badge" id="windowBadge">WINDOW #0</span>
+      </div>
+      <div class="panel-body" style="padding:10px 14px">
+        <canvas id="lineChart"></canvas>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Traffic Distribution</span></div>
+        <div class="panel-body" style="padding:8px"><canvas id="pieChart" style="height:170px"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Threat Level</span></div>
+        <div class="gauge-wrap">
+          <svg class="gauge-svg" viewBox="0 0 200 110">
+            <defs>
+              <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%"   stop-color="#00ff6a"/>
+                <stop offset="50%"  stop-color="#ffe040"/>
+                <stop offset="100%" stop-color="#ff2d2d"/>
+              </linearGradient>
+            </defs>
+            <path d="M20,100 A80,80 0 0,1 180,100" fill="none" stroke="#0d3320" stroke-width="14" stroke-linecap="round"/>
+            <path id="gaugeFill" d="M20,100 A80,80 0 0,1 180,100" fill="none" stroke="url(#gaugeGrad)" stroke-width="14" stroke-linecap="round" stroke-dasharray="251" stroke-dashoffset="251" style="transition:stroke-dashoffset 1s ease"/>
+            <line id="needle" x1="100" y1="100" x2="100" y2="28" stroke="#fff" stroke-width="2" stroke-linecap="round" style="transform-origin:100px 100px;transform:rotate(-90deg);transition:transform 1s ease"/>
+            <circle cx="100" cy="100" r="5" fill="#fff" opacity=".6"/>
+          </svg>
+          <div class="gauge-label" id="gaugeLabel">LOW</div>
+          <div class="gauge-sub" id="gaugeSub">THREAT LEVEL</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bot-row">
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">Protocol Distribution</span><span class="panel-badge">LIVE</span></div>
+      <div class="proto-bars">
+        <div class="proto-row"><span class="proto-name">TCP</span><div class="proto-track"><div class="proto-fill tcp" id="tcp-bar" style="width:0%"></div></div><span class="proto-pct" id="tcp-pct">0%</span></div>
+        <div class="proto-row"><span class="proto-name">UDP</span><div class="proto-track"><div class="proto-fill udp" id="udp-bar" style="width:0%"></div></div><span class="proto-pct" id="udp-pct">0%</span></div>
+        <div class="proto-row"><span class="proto-name">ICMP</span><div class="proto-track"><div class="proto-fill icmp" id="icmp-bar" style="width:0%"></div></div><span class="proto-pct" id="icmp-pct">0%</span></div>
+        <div class="proto-row"><span class="proto-name">OTHER</span><div class="proto-track"><div class="proto-fill other" id="other-bar" style="width:0%"></div></div><span class="proto-pct" id="other-pct">0%</span></div>
+      </div>
+      <div class="panel-header" style="margin-top:4px"><span class="panel-title">Feature Vector</span></div>
+      <div class="fv-grid">
+        <div class="fv-item"><span class="fv-key">pkt_count</span><span class="fv-val" id="fv-pkt">—</span></div>
+        <div class="fv-item"><span class="fv-key">avg_pkt_size</span><span class="fv-val" id="fv-size">—</span></div>
+        <div class="fv-item"><span class="fv-key">unique_src_ips</span><span class="fv-val" id="fv-src">—</span></div>
+        <div class="fv-item"><span class="fv-key">unique_dst_ips</span><span class="fv-val" id="fv-dst">—</span></div>
+        <div class="fv-item"><span class="fv-key">in/out_ratio</span><span class="fv-val" id="fv-ratio">—</span></div>
+        <div class="fv-item"><span class="fv-key">syn_flag_ratio</span><span class="fv-val" id="fv-syn">—</span></div>
+      </div>
+      <div class="panel-header" style="margin-top:4px"><span class="panel-title">ML Model</span></div>
+      <div class="ms-grid">
+        <div class="ms-item"><div class="ms-label">Algorithm</div><div class="ms-val">Random Forest</div></div>
+        <div class="ms-item"><div class="ms-label">Accuracy</div><div class="ms-val">99.80%</div></div>
+        <div class="ms-item"><div class="ms-label">Last Pred</div><div class="ms-val" id="lastPred">—</div></div>
+        <div class="ms-item"><div class="ms-label">Confidence</div><div class="ms-val" id="confidence">—</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">Top Source IPs</span><span class="panel-badge">CURRENT WINDOW</span></div>
+      <div class="panel-body" style="padding:8px">
+        <table class="ip-table">
+          <thead><tr><th>Source IP</th><th>Packets</th><th>Status</th></tr></thead>
+          <tbody id="ipTableBody"></tbody>
+        </table>
+      </div>
+      <div class="panel-header" style="margin-top:4px"><span class="panel-title">Rule Engine</span></div>
+      <div class="panel-body">
+        <div id="ruleStatus" style="font-family:var(--font-mono);font-size:11px;line-height:2;color:var(--text-dim)">Waiting for data...</div>
+      </div>
+      <div class="panel-header" style="margin-top:4px"><span class="panel-title">Traffic Direction</span></div>
+      <div class="panel-body">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+          <span style="font-size:10px;color:var(--text-dim);width:70px">Incoming</span>
+          <div class="proto-track" style="flex:1"><div class="proto-fill tcp" id="inBar" style="width:0%"></div></div>
+          <span class="proto-pct" id="inPct">0%</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="font-size:10px;color:var(--text-dim);width:70px">Outgoing</span>
+          <div class="proto-track" style="flex:1"><div class="proto-fill udp" id="outBar" style="width:0%"></div></div>
+          <span class="proto-pct" id="outPct">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">Live Activity Feed</span><span class="panel-badge red">LIVE</span></div>
+      <div class="feed" id="activityFeed">
+        <div class="feed-entry normal"><span class="feed-time">[--:--:--]</span>Connecting to Flask server at localhost:5000...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <span>NIDS SENTINEL — LIVE MODE</span>
+  <span>Flask API → localhost:5000/api/window</span>
+  <span>RANDOM FOREST · SCAPY · REAL-TIME</span>
+</footer>
+
+<script>
+const API = "http://localhost:5000";
+let pktHistory = [];
+let pieAnim = {normal:0, susp:0, tn:0, ts:0};
+let lastWindowNum = 0;
+
+// ── Clock ──────────────────────────────────────────────────────────────────
+function pad(n){return String(n).padStart(2,'0')}
+setInterval(()=>{
+  const d=new Date();
+  document.getElementById('clock').textContent=
+    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+},1000);
+
+// ── Canvas setup ───────────────────────────────────────────────────────────
+const lineCanvas=document.getElementById('lineChart');
+const lineCtx=lineCanvas.getContext('2d');
+const pieCanvas=document.getElementById('pieChart');
+const pieCtx=pieCanvas.getContext('2d');
+function resizeCanvases(){
+  lineCanvas.width=lineCanvas.offsetWidth; lineCanvas.height=200;
+  pieCanvas.width=pieCanvas.offsetWidth;   pieCanvas.height=170;
+}
+resizeCanvases();
+window.addEventListener('resize',resizeCanvases);
+
+// ── Line Chart ─────────────────────────────────────────────────────────────
+function drawLine(){
+  const W=lineCanvas.width,H=lineCanvas.height,data=pktHistory.slice(-30);
+  lineCtx.clearRect(0,0,W,H);
+  if(data.length<2)return;
+  const maxV=Math.max(...data.map(d=>d.pkts),10);
+  const p={t:20,r:20,b:30,l:44},cw=W-p.l-p.r,ch=H-p.t-p.b;
+  lineCtx.strokeStyle='#0d3320';lineCtx.lineWidth=1;
+  for(let i=0;i<=4;i++){
+    const y=p.t+ch*(1-i/4);
+    lineCtx.beginPath();lineCtx.moveTo(p.l,y);lineCtx.lineTo(p.l+cw,y);lineCtx.stroke();
+    lineCtx.fillStyle='#3a7a50';lineCtx.font='9px Share Tech Mono';lineCtx.textAlign='right';
+    lineCtx.fillText(Math.round(maxV*i/4),p.l-6,y+3);
+  }
+  const xs=cw/(data.length-1);
+  lineCtx.beginPath();
+  data.forEach((d,i)=>{const x=p.l+i*xs,y=p.t+ch*(1-d.pkts/maxV);i===0?lineCtx.moveTo(x,y):lineCtx.lineTo(x,y)});
+  lineCtx.lineTo(p.l+cw,p.t+ch);lineCtx.lineTo(p.l,p.t+ch);lineCtx.closePath();
+  const g=lineCtx.createLinearGradient(0,p.t,0,p.t+ch);
+  g.addColorStop(0,'rgba(0,229,255,.18)');g.addColorStop(1,'rgba(0,229,255,0)');
+  lineCtx.fillStyle=g;lineCtx.fill();
+  lineCtx.beginPath();lineCtx.strokeStyle='#00e5ff';lineCtx.lineWidth=2;
+  data.forEach((d,i)=>{const x=p.l+i*xs,y=p.t+ch*(1-d.pkts/maxV);i===0?lineCtx.moveTo(x,y):lineCtx.lineTo(x,y)});
+  lineCtx.stroke();
+  data.forEach((d,i)=>{
+    if(d.label===1){
+      const x=p.l+i*xs,y=p.t+ch*(1-d.pkts/maxV);
+      lineCtx.beginPath();lineCtx.arc(x,y,5,0,Math.PI*2);
+      lineCtx.fillStyle='#ff2d2d';lineCtx.shadowColor='#ff2d2d';lineCtx.shadowBlur=12;
+      lineCtx.fill();lineCtx.shadowBlur=0;
+    }
+  });
+  lineCtx.fillStyle='#3a7a50';lineCtx.textAlign='center';lineCtx.font='9px Share Tech Mono';
+  const step=Math.max(1,Math.floor(data.length/6));
+  data.forEach((d,i)=>{if(i%step===0)lineCtx.fillText(d.t,p.l+i*xs,H-6)});
+}
+
+// ── Donut ──────────────────────────────────────────────────────────────────
+function drawDonut(){
+  const W=pieCanvas.width,H=pieCanvas.height;
+  pieCtx.clearRect(0,0,W,H);
+  const cx=W/2,cy=H/2-10,R=60,r=36;
+  const total=pieAnim.normal+pieAnim.susp;
+  if(total===0){
+    pieCtx.beginPath();pieCtx.arc(cx,cy,R,0,Math.PI*2);
+    pieCtx.strokeStyle='#0d3320';pieCtx.lineWidth=R-r;pieCtx.stroke();return;
+  }
+  const slices=[{val:pieAnim.normal,color:'#00ff6a',label:'Normal'},{val:pieAnim.susp,color:'#ff2d2d',label:'Suspicious'}];
+  let start=-Math.PI/2;
+  slices.forEach(s=>{
+    const sw=(s.val/total)*Math.PI*2;
+    pieCtx.beginPath();pieCtx.arc(cx,cy,R,start,start+sw);pieCtx.arc(cx,cy,r,start+sw,start,true);
+    pieCtx.closePath();pieCtx.fillStyle=s.color;pieCtx.shadowColor=s.color;pieCtx.shadowBlur=8;
+    pieCtx.fill();pieCtx.shadowBlur=0;start+=sw;
+  });
+  const np=total>0?Math.round(pieAnim.normal/total*100):0;
+  pieCtx.fillStyle='#fff';pieCtx.textAlign='center';
+  pieCtx.font='bold 20px Orbitron';pieCtx.fillText(np+'%',cx,cy+4);
+  pieCtx.font='9px Share Tech Mono';pieCtx.fillStyle='#3a7a50';pieCtx.fillText('NORMAL',cx,cy+18);
+  const ly=H-18;
+  slices.forEach((s,i)=>{
+    const lx=cx-70+i*100;
+    pieCtx.fillStyle=s.color;pieCtx.fillRect(lx,ly,10,10);
+    pieCtx.fillStyle='#b0ffcc';pieCtx.font='9px Share Tech Mono';pieCtx.textAlign='left';
+    pieCtx.fillText(`${s.label}(${Math.round(i===0?pieAnim.normal:pieAnim.susp)})`,lx+14,ly+9);
+  });
+}
+(function animDonut(){
+  pieAnim.normal+=(pieAnim.tn-pieAnim.normal)*0.08;
+  pieAnim.susp+=(pieAnim.ts-pieAnim.susp)*0.08;
+  drawDonut();requestAnimationFrame(animDonut);
+})();
+
+// ── Gauge ──────────────────────────────────────────────────────────────────
+function updateGauge(score){
+  const d=251,f=(score/100)*d;
+  document.getElementById('gaugeFill').style.strokeDashoffset=d-f;
+  document.getElementById('needle').style.transform=`rotate(${-90+score*1.8}deg)`;
+  let label,sub,color;
+  if(score<30){label='LOW';sub='ALL CLEAR';color='var(--green)'}
+  else if(score<60){label='MED';sub='MONITORING';color='var(--yellow)'}
+  else if(score<80){label='HIGH';sub='CAUTION';color='var(--yellow)'}
+  else{label='CRITICAL';sub='ALERT!';color='var(--red)'}
+  const el=document.getElementById('gaugeLabel');
+  el.textContent=label;el.style.color=color;el.style.textShadow=`0 0 20px ${color}`;
+  document.getElementById('gaugeSub').textContent=sub;
+}
+
+// ── Feed ───────────────────────────────────────────────────────────────────
+function addFeed(type,msg){
+  const feed=document.getElementById('activityFeed');
+  const d=new Date();
+  const t=`${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const div=document.createElement('div');
+  div.className=`feed-entry ${type}`;
+  div.innerHTML=`<span class="feed-time">[${t}]</span>${msg}`;
+  feed.insertBefore(div,feed.firstChild);
+  while(feed.children.length>50)feed.removeChild(feed.lastChild);
+}
+
+// ── Apply window data ──────────────────────────────────────────────────────
+function applyWindow(w){
+  if(!w||!w.features)return;
+  const f=w.features,s=w.summary||{};
+  const total=s.normal+s.suspicious||1;
+  const nPct=Math.round(s.normal/total*100);
+  const sPct=100-nPct;
+
+  document.getElementById('totalPkts').textContent=(s.total_pkts||0).toLocaleString();
+  document.getElementById('pktsRate').textContent=`${Math.round(f.pkt_rate||0)} pkt/s`;
+  document.getElementById('normalPct').textContent=nPct+'%';
+  document.getElementById('normalCount').textContent=`${s.normal||0} windows`;
+  document.getElementById('suspPct').textContent=sPct+'%';
+  document.getElementById('suspCount').textContent=`${s.suspicious||0} windows`;
+  document.getElementById('alertCount').textContent=s.alerts||0;
+  document.getElementById('windowBadge').textContent=`WINDOW #${w.window_num||0}`;
+
+  // Protocol bars
+  [['tcp','tcp_ratio'],['udp','udp_ratio'],['icmp','icmp_ratio'],['other','other_ratio']].forEach(([id,key])=>{
+    const v=Math.round((f[key]||0)*100);
+    document.getElementById(id+'-bar').style.width=v+'%';
+    document.getElementById(id+'-pct').textContent=v+'%';
+  });
+
+  // Feature vector
+  document.getElementById('fv-pkt').textContent=f.pkt_count||0;
+  document.getElementById('fv-size').textContent=Math.round(f.avg_pkt_size||0)+' B';
+  document.getElementById('fv-src').textContent=f.unique_src_ips||0;
+  document.getElementById('fv-dst').textContent=f.unique_dst_ips||0;
+  document.getElementById('fv-ratio').textContent=(f.in_ratio||0).toFixed(2);
+  document.getElementById('fv-syn').textContent=(f.syn_flag_ratio||0).toFixed(3);
+
+  // ML
+  const lp=document.getElementById('lastPred');
+  lp.textContent=w.final_label===1?'SUSPICIOUS':'Normal';
+  lp.style.color=w.final_label===1?'var(--red)':'var(--green)';
+  document.getElementById('confidence').textContent=((w.ml_confidence||0)*100).toFixed(1)+'%';
+
+  // Direction
+  const inP=Math.round((f.in_ratio||0)*100);
+  document.getElementById('inBar').style.width=inP+'%';
+  document.getElementById('inPct').textContent=inP+'%';
+  document.getElementById('outBar').style.width=(100-inP)+'%';
+  document.getElementById('outPct').textContent=(100-inP)+'%';
+
+  // Rule engine
+  const rules=w.rules_fired||[];
+  document.getElementById('ruleStatus').innerHTML=
+    rules.length===0
+      ?'<span style="color:var(--green)">✓ All rules: PASS</span>'
+      :rules.map(r=>`<span style="color:var(--red)">✗ ${r}</span>`).join('<br>');
+
+  // IP table
+  const tbody=document.getElementById('ipTableBody');
+  tbody.innerHTML='';
+  (w.top_src_ips||[]).forEach((entry,i)=>{
+    const sus=w.final_label===1&&i<2;
+    const cls=sus?'suspicious':'normal';
+    const badge=sus?'SUSPICIOUS':'NORMAL';
+    tbody.innerHTML+=`<tr>
+      <td style="font-family:var(--font-mono);font-size:11px;color:var(--cyan)">${entry.ip}</td>
+      <td style="color:var(--text)">${entry.pkts}</td>
+      <td><span class="ip-badge ${cls}">${badge}</span></td>
+    </tr>`;
+  });
+
+  // Pie targets
+  pieAnim.tn=s.normal||0; pieAnim.ts=s.suspicious||0;
+
+  // Line history
+  const d=new Date();
+  pktHistory.push({t:`${pad(d.getMinutes())}:${pad(d.getSeconds())}`,pkts:f.pkt_count||0,label:w.final_label});
+  if(pktHistory.length>40)pktHistory.shift();
+  drawLine();
+
+  // Threat score
+  const threat=Math.min(100,Math.round((s.suspicious/total)*100*1.5+(rules.length*15)));
+  updateGauge(threat);
+
+  // Feed + alert banner
+  if(w.final_label===1){
+    const reasons=[...rules];
+    if(w.ml_label===1)reasons.push(`RF:${((w.ml_confidence||0)*100).toFixed(0)}%`);
+    addFeed('alert',`🚨 SUSPICIOUS — ${reasons.join(' | ')} | ${f.pkt_count} pkts`);
+    const b=document.getElementById('alertBanner');
+    b.style.display='block';
+    clearTimeout(b._t);b._t=setTimeout(()=>b.style.display='none',4000);
+    document.getElementById('lastAlertTime').textContent=`Last: ${w.timestamp}`;
+  } else {
+    addFeed('normal',`✓ Normal — ${f.pkt_count} pkts | ${f.unique_src_ips} src IPs | conf ${((w.ml_confidence||0)*100).toFixed(0)}%`);
+  }
+}
+
+// ── Poll Flask API ─────────────────────────────────────────────────────────
+let failCount=0;
+
+async function poll(){
+  try{
+    const r=await fetch(`${API}/api/window`,{signal:AbortSignal.timeout(4000)});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const data=await r.json();
+
+    if(data.status==='waiting'){
+      document.getElementById('connBadge').className='panel-badge waiting';
+      document.getElementById('connBadge').textContent='⏳ WAITING FOR DATA';
+      return;
+    }
+
+    // Only update if new window
+    if(data.window_num!==lastWindowNum){
+      lastWindowNum=data.window_num;
+      applyWindow(data);
+
+      // update connection badge + data source
+      document.getElementById('connBadge').className='panel-badge live';
+      document.getElementById('connBadge').textContent='🟢 LIVE — FLASK API';
+      const src = data.features && data.features.pkt_count > 0 ? 'Real Capture' : 'Simulation';
+      document.getElementById('dataSource').textContent=src;
+    }
+    failCount=0;
+  }catch(e){
+    failCount++;
+    const badge=document.getElementById('connBadge');
+    badge.className='panel-badge error';
+    badge.textContent='🔴 NO CONNECTION';
+    if(failCount===1){
+      addFeed('warning','⚠ Cannot reach Flask server at localhost:5000 — is 6_flask_server.py running?');
+    }
+  }
+}
+
+// Initial state
+updateGauge(0);
+drawDonut();
+
+// Poll every 5 seconds
+poll();
+setInterval(poll,5000);
+</script>
+</body>
+</html>
